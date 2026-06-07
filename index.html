@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PixelShrink - Client-Side Batch Image Optimizer</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+        body { background-color: #0f172a; color: #f8fafc; padding: 2rem 1rem; min-height: 100vh; display: flex; flex-direction: column; align-items: center; }
+        
+        header { margin-bottom: 2rem; text-align: center; max-width: 800px; width: 100%; }
+        header h1 { font-size: 2.25rem; font-weight: 800; letter-spacing: -0.025em; color: #f1f5f9; }
+        header p { color: #94a3b8; margin-top: 0.5rem; }
+        .privacy-badge { display: inline-block; background: #065f46; color: #34d399; font-size: 0.75rem; font-weight: 700; padding: 0.25rem 0.75rem; border-radius: 20px; margin-top: 0.5rem; text-transform: uppercase; letter-spacing: 0.05em; }
+
+        .container { width: 100%; max-width: 1200px; display: grid; grid-template-columns: 1fr; gap: 1.5rem; }
+        @media (min-width: 992px) { .container { grid-template-columns: 8fr 12fr; } }
+
+        .card { background: #1e293b; padding: 1.5rem; border-radius: 12px; border: 1px solid #334155; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.3); height: fit-content; }
+        .card-title { font-size: 0.85rem; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 1.25rem; padding-bottom: 0.5rem; border-bottom: 1px solid #334155; display: flex; justify-content: space-between; align-items: center; }
+
+        .file-dropzone { border: 2px dashed #475569; background: #0f172a; padding: 2.5rem 1rem; text-align: center; border-radius: 8px; cursor: pointer; transition: border-color 0.2s; margin-bottom: 1rem; position: relative; }
+        .file-dropzone:hover { border-color: #38bdf8; }
+        .file-dropzone input { position: absolute; top: 0; left: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
+
+        /* Configuration Input Groups */
+        .config-group { display: flex; flex-direction: column; gap: 1rem; margin-bottom: 1.25rem; }
+        .control-row { display: flex; flex-direction: column; gap: 0.4rem; }
+        .control-row label { font-size: 0.85rem; font-weight: 600; color: #cbd5e1; display: flex; justify-content: space-between; }
+        .control-row label span { color: #38bdf8; font-family: monospace; }
+        .control-row input[type="range"] { width: 100%; accent-color: #38bdf8; background: #334155; height: 6px; border-radius: 4px; outline: none; cursor: pointer; }
+        .control-row select, .control-row input[type="number"] { padding: 0.6rem; background: #0f172a; border: 1px solid #334155; border-radius: 6px; color: #f8fafc; font-size: 0.9rem; outline: none; }
+        .control-row select:focus, .control-row input:focus { border-color: #38bdf8; }
+
+        .btn-action { background: #0284c7; color: white; border: none; padding: 0.85rem 1.5rem; border-radius: 8px; font-weight: 600; cursor: pointer; width: 100%; display: flex; justify-content: center; align-items: center; gap: 0.5rem; transition: background 0.2s; font-size: 1rem; }
+        .btn-action:hover { background: #0369a1; }
+        .btn-action:disabled { background: #475569; color: #94a3b8; cursor: not-allowed; }
+
+        /* Queue Layout Table */
+        .queue-container { max-height: 550px; overflow-y: auto; background: #0f172a; border-radius: 8px; border: 1px solid #334155; padding: 0.5rem; }
+        .queue-item { display: grid; grid-template-columns: auto 1fr auto; gap: 1rem; background: #1e293b; padding: 0.75rem; border-radius: 6px; margin-bottom: 0.5rem; align-items: center; border: 1px solid #334155; }
+        .queue-item:last-child { margin-bottom: 0; }
+        
+        .thumb-preview { width: 50px; height: 50px; border-radius: 4px; object-fit: cover; background: #334155; border: 1px solid #475569; }
+        .item-details { min-width: 0; }
+        .item-name { font-size: 0.85rem; font-weight: 600; color: #f1f5f9; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-bottom: 0.2rem; font-family: monospace; }
+        .item-sizes { font-size: 0.75rem; color: #94a3b8; font-family: monospace; display: flex; gap: 0.5rem; align-items: center; }
+        .saving-badge { background: #065f46; color: #34d399; padding: 0.1rem 0.4rem; border-radius: 4px; font-weight: 700; font-size: 0.7rem; }
+        
+        .btn-remove { background: #991b1b; color: #fca5a5; border: none; padding: 0.35rem 0.6rem; border-radius: 4px; font-size: 0.75rem; font-weight: 600; cursor: pointer; transition: background 0.2s; }
+        .btn-remove:hover { background: #7f1d1d; }
+        
+        .empty-state { padding: 3rem 1rem; text-align: center; color: #475569; font-style: italic; font-size: 0.9rem; }
+        
+        /* Progress Monitor overlay */
+        .status-banner { margin-top: 1rem; padding: 0.75rem; border-radius: 6px; font-size: 0.85rem; display: none; font-weight: 500; text-align: center; }
+        .status-working { display: block; background: #854d0e; color: #fef9c3; border: 1px solid #fef08a; }
+        .status-complete { display: block; background: #065f46; color: #34d399; border: 1px solid #059669; }
+    </style>
+</head>
+<body>
+
+    <header>
+        <h1>PixelShrink Processing Engine</h1>
+        <p>Ultra-fast batch image optimization tool running 100% locally in your standard browser runtime sandbox.</p>
+        <span class="privacy-badge">🔒 Local Memory Pipeline Only</span>
+    </header>
+
+    <div class="container">
+        <div class="card">
+            <div class="card-title">⚙️ Optimization Controls</div>
+            
+            <div class="file-dropzone">
+                <p>📸 Drag & Drop or Click to Add Source Images</p>
+                <input type="file" id="imageInput" accept="image/png, image/jpeg, image/webp" multiple onchange="handleImageSelection()">
+            </div>
+
+            <div class="config-group">
+                <div class="control-row">
+                    <label for="compressionQuality">Target Compression Quality: <span id="qualityValDisplay">80%</span></label>
+                    <input type="range" id="compressionQuality" min="5" max="100" value="80" oninput="updateControlsLabel()">
+                </div>
+
+                <div class="control-row">
+                    <label for="outputFormat">Output Format Conversion Matrix</label>
+                    <select id="outputFormat">
+                        <option value="preserve">Preserve Original File Format Type</option>
+                        <option value="image/webp">Convert All to WebP (Recommended)</option>
+                        <option value="image/jpeg">Convert All to JPEG</option>
+                        <option value="image/png">Convert All to PNG (Lossless Framework)</option>
+                    </select>
+                </div>
+
+                <div class="control-row">
+                    <label for="maxWidthConstraint">Max Dimension Limit (Width/Height in px)</label>
+                    <input type="number" id="maxWidthConstraint" placeholder="e.g. 1920 (Leave blank for source resolution)" min="10">
+                </div>
+            </div>
+
+            <button class="btn-action" id="btnExecuteProcess" disabled onclick="executeBatchCompression()">
+                ⚡ Optimize & Shrink Batch
+            </button>
+
+            <div id="statusNotificationBanner" class="status-banner"></div>
+        </div>
+
+        <div class="card">
+            <div class="card-title">📚 Active Processing Queue Matrix</div>
+            <div class="queue-container" id="queueRenderContainer">
+                <div class="empty-state">No active image resources queued for optimization.</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let imagePipelineQueue = [];
+
+        function updateControlsLabel() {
+            const qualityVal = document.getElementById('compressionQuality').value;
+            document.getElementById('qualityValDisplay').innerText = `${qualityVal}%`;
+        }
+
+        function handleImageSelection() {
+            const files = Array.from(document.getElementById('imageInput').files);
+            hideStatusBanner();
+
+            files.forEach(file => {
+                const itemRef = {
+                    id: `img_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
+                    fileObject: file,
+                    originalSize: file.size,
+                    compressedSize: null,
+                    dataUrlPreview: null,
+                    processed: false
+                };
+
+                // Generate temporary sandboxed local preview source blobs
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    itemRef.dataUrlPreview = e.target.result;
+                    renderPipelineQueueTable();
+                };
+                reader.readAsDataURL(file);
+
+                imagePipelineQueue.push(itemRef);
+            });
+
+            document.getElementById('imageInput').value = ''; // Reset node trigger path
+            renderPipelineQueueTable();
+        }
+
+        function removeQueueNode(id) {
+            imagePipelineQueue = imagePipelineQueue.filter(item => item.id !== id);
+            renderPipelineQueueTable();
+            hideStatusBanner();
+        }
+
+        function formatByteMetric(bytes) {
+            if (bytes === 0) return '0 Bytes';
+            const k = 1024;
+            const sizes = ['Bytes', 'KB', 'MB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+        }
+
+        function renderPipelineQueueTable() {
+            const container = document.getElementById('queueRenderContainer');
+            if (imagePipelineQueue.length === 0) {
+                container.innerHTML = '<div class="empty-state">No active image resources queued for optimization.</div>';
+                document.getElementById('btnExecuteProcess').disabled = true;
+                return;
+            }
+
+            container.innerHTML = '';
+            imagePipelineQueue.forEach(item => {
+                const nodeRow = document.createElement('div');
+                nodeRow.className = 'queue-item';
+
+                const imgPreviewSrc = item.dataUrlPreview || 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="50" height="50" viewBox="0 0 50 50"><rect width="50" height="50" fill="%23334155"/></svg>';
+                
+                let sizingContextString = `Orig: ${formatByteMetric(item.originalSize)}`;
+                if (item.processed && item.compressedSize) {
+                    const savingPct = Math.round(((item.originalSize - item.compressedSize) / item.originalSize) * 100);
+                    sizingContextString += ` ➡️ Optimized: ${formatByteMetric(item.compressedSize)} <span class="saving-badge">-${savingPct}%</span>`;
+                }
+
+                nodeRow.innerHTML = `
+                    <img src="${imgPreviewSrc}" class="thumb-preview" alt="Preview">
+                    <div class="item-details">
+                        <div class="item-name">${item.fileObject.name}</div>
+                        <div class="item-sizes">${sizingContextString}</div>
+                    </div>
+                    <div>
+                        <button class="btn-remove" onclick="removeQueueNode('${item.id}')">${item.processed ? 'Clear' : 'Remove'}</button>
+                    </div>
+                `;
+                container.appendChild(nodeRow);
+            });
+
+            // Enable execute operation if unprocessed values exist
+            const hasUnprocessed = imagePipelineQueue.some(i => !i.processed);
+            document.getElementById('btnExecuteProcess').disabled = !hasUnprocessed;
+        }
+
+        function showStatusBanner(text, type) {
+            const banner = document.getElementById('statusNotificationBanner');
+            banner.className = `status-banner status-${type}`;
+            banner.innerText = text;
+        }
+
+        function hideStatusBanner() {
+            document.getElementById('statusNotificationBanner').style.display = 'none';
+        }
+
+        // --- CORE CLIENT-SIDE IMAGE SAMPLING CANVAS ENGINE ---
+        async function executeBatchCompression() {
+            try {
+                const qualitySliderVal = parseFloat(document.getElementById('compressionQuality').value) / 100;
+                const targetFormatSelection = document.getElementById('outputFormat').value;
+                const dimensionConstraint = parseInt(document.getElementById('maxWidthConstraint').value) || null;
+
+                const targetItems = imagePipelineQueue.filter(item => !item.processed);
+                if (targetItems.length === 0) return;
+
+                showStatusBanner(`Processing optimization array (0 / ${targetItems.length})...`, "working");
+                document.getElementById('btnExecuteProcess').disabled = true;
+
+                let processingIndex = 0;
+
+                for (const item of targetItems) {
+                    processingIndex++;
+                    showStatusBanner(`Processing optimization array (${processingIndex} / ${targetItems.length})...`, "working");
+
+                    const imgElement = await loadBinaryImageMatrix(item.dataUrlPreview);
+                    
+                    // Core Canvas Context Frame Generation
+                    const canvasElement = document.createElement('canvas');
+                    const ctxElement = canvasElement.getContext('2d');
+
+                    let calculatedWidth = imgElement.width;
+                    let calculatedHeight = imgElement.height;
+
+                    // Calculate proportional dimension bounds downsampling matching rules
+                    if (dimensionConstraint && (calculatedWidth > dimensionConstraint || calculatedHeight > dimensionConstraint)) {
+                        if (calculatedWidth > calculatedHeight) {
+                            calculatedHeight = Math.round((calculatedHeight * dimensionConstraint) / calculatedWidth);
+                            calculatedWidth = dimensionConstraint;
+                        } else {
+                            calculatedWidth = Math.round((calculatedWidth * dimensionConstraint) / calculatedHeight);
+                            calculatedHeight = dimensionConstraint;
+                        }
+                    }
+
+                    canvasElement.width = calculatedWidth;
+                    canvasElement.height = calculatedHeight;
+
+                    // Super-sample frame render mapping execution block
+                    ctxElement.drawImage(imgElement, 0, 0, calculatedWidth, calculatedHeight);
+
+                    // Determine targeting structural mime types
+                    let outputMimeType = item.fileObject.type;
+                    if (targetFormatSelection !== 'preserve') {
+                        outputMimeType = targetFormatSelection;
+                    }
+
+                    // Fallback configuration processing
+                    const outputBlob = await new Promise(resolve => {
+                        canvasElement.toBlob(blob => resolve(blob), outputMimeType, qualitySliderVal);
+                    });
+
+                    item.compressedSize = outputBlob.size;
+                    item.processed = true;
+
+                    // Generate automatic delivery down-stream links
+                    let baseTargetName = item.fileObject.name.substring(0, item.fileObject.name.lastIndexOf('.'));
+                    let extendedTargetExtension = outputMimeType.split('/')[1];
+                    if (extendedTargetExtension === 'jpeg') extendedTargetExtension = 'jpg';
+
+                    triggerDownloadBlob(outputBlob, `${baseTargetName}_optimized.${extendedTargetExtension}`);
+                }
+
+                showStatusBanner(`Batch file stream compressed and downloaded successfully!`, "complete");
+                renderPipelineQueueTable();
+            } catch (err) {
+                showStatusBanner(`Execution processing failure: ${err.message}`, "working");
+                document.getElementById('btnExecuteProcess').disabled = false;
+            }
+        }
+
+        function loadBinaryImageMatrix(src) {
+            return new Promise((resolve, reject) => {
+                const img = new Image();
+                img.onload = () => resolve(img);
+                img.onerror = (err) => reject(err);
+                img.src = src;
+            });
+        }
+
+        function triggerDownloadBlob(blob, filename) {
+            const linkElement = document.createElement('a');
+            linkElement.href = URL.createObjectURL(blob);
+            linkElement.download = filename;
+            document.body.appendChild(linkElement);
+            linkElement.click();
+            document.body.removeChild(linkElement);
+        }
+    </script>
+</body>
+</html>
