@@ -2,67 +2,58 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>PixelShrink Pro - Live Size Prediction</title>
+    <title>PixelShrink - Batch Image Optimizer</title>
     <style>
-        /* [Keeping your existing dark-mode CSS structure...] */
-        body { background-color: #0f172a; color: #f8fafc; padding: 2rem; font-family: sans-serif; }
-        .queue-item { background: #1e293b; padding: 1rem; border-radius: 8px; margin-bottom: 0.5rem; display: flex; justify-content: space-between; align-items: center; border: 1px solid #334155; }
-        .size-tag { font-family: monospace; color: #38bdf8; font-weight: bold; }
-        .prediction-tag { color: #fbbf24; font-size: 0.8rem; }
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: sans-serif; }
+        body { background: #0f172a; color: #f8fafc; padding: 2rem; }
+        .card { background: #1e293b; padding: 1.5rem; border-radius: 12px; border: 1px solid #334155; }
+        .queue-item { display: flex; justify-content: space-between; padding: 0.75rem; border-bottom: 1px solid #334155; }
+        .btn { background: #0284c7; color: white; padding: 0.8rem 1.5rem; border: none; border-radius: 6px; cursor: pointer; }
+        .size-tag { font-family: monospace; color: #38bdf8; }
+        .post-size { color: #34d399; font-weight: bold; }
     </style>
 </head>
 <body>
-    <header><h1>PixelShrink Engine</h1></header>
-    
     <div class="card">
-        <input type="file" id="imageInput" multiple onchange="handleNewFiles()">
-        <div id="queueRenderContainer"></div>
+        <h1>PixelShrink Engine</h1>
+        <input type="file" id="imageInput" multiple onchange="handleFiles()">
+        <div id="queue"></div>
+        <button class="btn" onclick="processAll()">Optimize All</button>
     </div>
 
     <script>
-        // Formats bytes to human-readable string
-        function formatBytes(bytes) {
-            if (bytes === 0) return '0 Bytes';
-            const k = 1024, sizes = ['Bytes', 'KB', 'MB'];
-            const i = Math.floor(Math.log(bytes) / Math.log(k));
-            return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
-        }
-
-        async function predictSize(file, quality) {
-            // Create a small preview to estimate compression ratio
-            const img = new Image();
-            img.src = URL.createObjectURL(file);
-            await img.decode();
-            
-            const canvas = document.createElement('canvas');
-            canvas.width = 100; canvas.height = 100; // Small sample
-            canvas.getContext('2d').drawImage(img, 0, 0, 100, 100);
-            
-            const blob = await new Promise(r => canvas.toBlob(r, 'image/jpeg', quality));
-            
-            // Calculate ratio: (Compressed Sample / Original Sample) * Original File Size
-            const ratio = blob.size / 10000; // 100x100 = 10k pixels
-            return Math.round(file.size * ratio * 0.5); // 0.5 is a heuristic adjustment
-        }
-
-        async function handleNewFiles() {
+        let queue = [];
+        
+        function handleFiles() {
             const files = Array.from(document.getElementById('imageInput').files);
-            const quality = 0.8; // Default 80%
-            const container = document.getElementById('queueRenderContainer');
+            queue = files.map(f => ({ file: f, id: Math.random() }));
+            render();
+        }
 
-            for (const file of files) {
-                const predicted = await predictSize(file, quality);
+        function render() {
+            const container = document.getElementById('queue');
+            container.innerHTML = queue.map(item => `
+                <div class="queue-item">
+                    <span>${item.file.name}</span>
+                    <span class="size-tag" id="size_${item.id}">Orig: ${(item.file.size/1024).toFixed(1)} KB</span>
+                </div>
+            `).join('');
+        }
+
+        async function processAll() {
+            for (let item of queue) {
+                const img = new Image();
+                img.src = URL.createObjectURL(item.file);
+                await img.decode();
                 
-                const div = document.createElement('div');
-                div.className = 'queue-item';
-                div.innerHTML = `
-                    <div>${file.name}</div>
-                    <div>
-                        <span class="size-tag">${formatBytes(file.size)}</span> 
-                        ➡️ <span class="prediction-tag">Est: ${formatBytes(predicted)}</span>
-                    </div>
-                `;
-                container.appendChild(div);
+                const canvas = document.createElement('canvas');
+                canvas.width = img.width; canvas.height = img.height;
+                canvas.getContext('2d').drawImage(img, 0, 0);
+                
+                canvas.toBlob(blob => {
+                    const el = document.getElementById(`size_${item.id}`);
+                    el.innerHTML = `Orig: ${(item.file.size/1024).toFixed(1)} KB ➡️ <span class="post-size">New: ${(blob.size/1024).toFixed(1)} KB</span>`;
+                }, 'image/jpeg', 0.8);
             }
         }
     </script>
