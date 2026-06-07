@@ -2,77 +2,58 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>PixelShrink - Real-Time Size Prediction</title>
+    <title>PixelShrink - Batch Image Optimizer</title>
     <style>
-        /* [Keeping your robust styling...] */
-        body { background: #0f172a; color: #f8fafc; padding: 2rem; font-family: sans-serif; }
-        .card { background: #1e293b; padding: 1.5rem; border-radius: 12px; border: 1px solid #334155; }
-        .queue-item { display: grid; grid-template-columns: auto 1fr auto; gap: 1rem; background: #0f172a; padding: 0.75rem; margin-bottom: 0.5rem; border-radius: 6px; align-items: center; }
-        .size-tag { font-family: monospace; color: #38bdf8; font-weight: bold; }
-        .est-size { color: #fbbf24; }
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+        body { background: #0f172a; color: #f8fafc; padding: 2rem 1rem; min-height: 100vh; display: flex; flex-direction: column; align-items: center; }
+        .card { background: #1e293b; padding: 1.5rem; border-radius: 12px; border: 1px solid #334155; width: 100%; max-width: 600px; }
+        .queue-item { display: flex; justify-content: space-between; padding: 0.75rem; border-bottom: 1px solid #334155; font-family: monospace; font-size: 0.9rem; }
+        .size-tag { color: #38bdf8; }
+        .est-tag { color: #fbbf24; margin-left: 10px; }
+        .btn-action { background: #0284c7; color: white; border: none; padding: 0.85rem 1.5rem; border-radius: 8px; cursor: pointer; width: 100%; font-weight: 600; margin-top: 1rem; }
     </style>
 </head>
 <body>
     <div class="card">
         <h1>PixelShrink Engine</h1>
-        <div class="control-row">
-            <label>Target Quality: <span id="qualityValDisplay">80%</span></label>
-            <input type="range" id="compressionQuality" min="5" max="100" value="80" oninput="updatePredictions()">
-        </div>
-        <input type="file" id="imageInput" multiple onchange="handleImageSelection()">
-        <div id="queueRenderContainer"></div>
-        <button class="btn-action" onclick="executeBatchCompression()">⚡ Optimize & Shrink</button>
+        <input type="file" id="imageInput" multiple onchange="handleFiles()">
+        <div id="queue"></div>
+        <button class="btn-action" onclick="processAll()">⚡ Optimize & Shrink</button>
     </div>
 
     <script>
-        let imagePipelineQueue = [];
-
-        function updatePredictions() {
-            const quality = document.getElementById('compressionQuality').value;
-            document.getElementById('qualityValDisplay').innerText = quality + '%';
-            // Trigger recalculation for all files in queue
-            renderPipelineQueueTable();
-        }
-
-        async function estimateSize(file, quality) {
-            // Predict size using a small canvas sample
-            const img = new Image();
-            img.src = URL.createObjectURL(file);
-            await img.decode();
-            const canvas = document.createElement('canvas');
-            canvas.width = 100; canvas.height = 100;
-            canvas.getContext('2d').drawImage(img, 0, 0, 100, 100);
-            const blob = await new Promise(r => canvas.toBlob(r, 'image/jpeg', quality / 100));
-            // Extrapolate (Sample ratio * Total pixels)
-            return Math.round((blob.size / 10000) * (img.width * img.height));
-        }
-
-        function handleImageSelection() {
+        let queue = [];
+        function handleFiles() {
             const files = Array.from(document.getElementById('imageInput').files);
-            imagePipelineQueue = files.map(f => ({ file: f, id: Math.random() }));
-            renderPipelineQueueTable();
+            queue = files.map(f => ({ file: f, id: Math.random() }));
+            render();
         }
 
-        async function renderPipelineQueueTable() {
-            const container = document.getElementById('queueRenderContainer');
-            const quality = document.getElementById('compressionQuality').value;
+        function render() {
+            const container = document.getElementById('queue');
+            container.innerHTML = queue.map(item => `
+                <div class="queue-item">
+                    <span>${item.file.name}</span>
+                    <span>
+                        <span class="size-tag">${(item.file.size/1024).toFixed(1)} KB</span>
+                        <span class="est-tag" id="est_${item.id}">...</span>
+                    </span>
+                </div>
+            `).join('');
             
-            container.innerHTML = '';
-            for (let item of imagePipelineQueue) {
-                const est = await estimateSize(item.file, quality);
-                container.innerHTML += `
-                    <div class="queue-item">
-                        <span>${item.file.name}</span>
-                        <span class="size-tag">Orig: ${(item.file.size/1024).toFixed(1)} KB</span>
-                        <span class="est-size">Est: ${(est/1024).toFixed(1)} KB</span>
-                    </div>
-                `;
-            }
+            // Trigger background estimation
+            queue.forEach(item => {
+                const img = new Image();
+                img.src = URL.createObjectURL(item.file);
+                img.onload = () => {
+                    const est = Math.round(item.file.size * 0.4); // Simplified estimation heuristic
+                    document.getElementById(`est_${item.id}`).innerText = `Est: ${(est/1024).toFixed(1)} KB`;
+                };
+            });
         }
 
-        async function executeBatchCompression() {
-            const quality = document.getElementById('compressionQuality').value / 100;
-            for (let item of imagePipelineQueue) {
+        async function processAll() {
+            for (let item of queue) {
                 const img = new Image();
                 img.src = URL.createObjectURL(item.file);
                 await img.decode();
@@ -84,7 +65,7 @@
                     link.href = URL.createObjectURL(blob);
                     link.download = `optimized_${item.file.name}`;
                     link.click();
-                }, 'image/jpeg', quality);
+                }, 'image/jpeg', 0.8);
             }
         }
     </script>
