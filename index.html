@@ -2,57 +2,64 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>PixelShrink - Batch Image Optimizer</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PixelShrink - Client-Side Batch Image Optimizer</title>
     <style>
-        * { box-sizing: border-box; margin: 0; padding: 0; font-family: sans-serif; }
-        body { background: #0f172a; color: #f8fafc; padding: 2rem; }
-        .card { background: #1e293b; padding: 1.5rem; border-radius: 12px; border: 1px solid #334155; }
-        .queue-item { display: flex; justify-content: space-between; padding: 0.75rem; border-bottom: 1px solid #334155; }
-        .btn { background: #0284c7; color: white; padding: 0.8rem 1.5rem; border: none; border-radius: 6px; cursor: pointer; }
-        .size-tag { font-family: monospace; color: #38bdf8; }
-        .post-size { color: #34d399; font-weight: bold; }
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+        body { background-color: #0f172a; color: #f8fafc; padding: 2rem 1rem; min-height: 100vh; display: flex; flex-direction: column; align-items: center; }
+        header { margin-bottom: 2rem; text-align: center; }
+        .card { background: #1e293b; padding: 1.5rem; border-radius: 12px; border: 1px solid #334155; width: 100%; max-width: 600px; }
+        .file-dropzone { border: 2px dashed #475569; padding: 2.5rem 1rem; text-align: center; border-radius: 8px; cursor: pointer; margin-bottom: 1rem; }
+        .btn-action { background: #0284c7; color: white; border: none; padding: 0.85rem 1.5rem; border-radius: 8px; cursor: pointer; width: 100%; font-weight: 600; }
+        .queue-item { display: flex; justify-content: space-between; padding: 0.75rem; border-bottom: 1px solid #334155; font-family: monospace; }
     </style>
 </head>
 <body>
+    <header><h1>PixelShrink Processing Engine</h1></header>
     <div class="card">
-        <h1>PixelShrink Engine</h1>
-        <input type="file" id="imageInput" multiple onchange="handleFiles()">
-        <div id="queue"></div>
-        <button class="btn" onclick="processAll()">Optimize All</button>
+        <div class="file-dropzone">
+            <p>📸 Click to Add Source Images</p>
+            <input type="file" id="imageInput" multiple onchange="handleImageSelection()">
+        </div>
+        <div id="queueRenderContainer"></div>
+        <button class="btn-action" onclick="executeBatchCompression()">⚡ Optimize & Shrink Batch</button>
     </div>
 
     <script>
-        let queue = [];
-        
-        function handleFiles() {
+        let imagePipelineQueue = [];
+
+        function handleImageSelection() {
             const files = Array.from(document.getElementById('imageInput').files);
-            queue = files.map(f => ({ file: f, id: Math.random() }));
-            render();
+            imagePipelineQueue = files.map(file => ({ fileObject: file, id: Date.now() + Math.random() }));
+            renderPipelineQueue();
         }
 
-        function render() {
-            const container = document.getElementById('queue');
-            container.innerHTML = queue.map(item => `
+        function renderPipelineQueue() {
+            const container = document.getElementById('queueRenderContainer');
+            container.innerHTML = imagePipelineQueue.map(item => `
                 <div class="queue-item">
-                    <span>${item.file.name}</span>
-                    <span class="size-tag" id="size_${item.id}">Orig: ${(item.file.size/1024).toFixed(1)} KB</span>
+                    <span>${item.fileObject.name}</span>
+                    <span>${(item.fileObject.size / 1024).toFixed(1)} KB</span>
                 </div>
             `).join('');
         }
 
-        async function processAll() {
-            for (let item of queue) {
+        async function executeBatchCompression() {
+            for (const item of imagePipelineQueue) {
                 const img = new Image();
-                img.src = URL.createObjectURL(item.file);
+                img.src = URL.createObjectURL(item.fileObject);
                 await img.decode();
                 
                 const canvas = document.createElement('canvas');
-                canvas.width = img.width; canvas.height = img.height;
+                canvas.width = img.width;
+                canvas.height = img.height;
                 canvas.getContext('2d').drawImage(img, 0, 0);
                 
                 canvas.toBlob(blob => {
-                    const el = document.getElementById(`size_${item.id}`);
-                    el.innerHTML = `Orig: ${(item.file.size/1024).toFixed(1)} KB ➡️ <span class="post-size">New: ${(blob.size/1024).toFixed(1)} KB</span>`;
+                    const link = document.createElement('a');
+                    link.href = URL.createObjectURL(blob);
+                    link.download = `optimized_${item.fileObject.name}`;
+                    link.click();
                 }, 'image/jpeg', 0.8);
             }
         }
